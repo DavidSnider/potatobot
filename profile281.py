@@ -1,14 +1,31 @@
-import jsim
 import logging
 import os
 import re
 import sys
+import json
+from pickle import Pickler, load
+
+import enchant
+import jsim
+from gensim.parsing.preprocessing import STOPWORDS
+from gensim.corpora.dictionary import Dictionary
+from gensim.corpora import MmCorpus
+from gensim.models.lsimodel import LsiModel
+from gensim.similarities import MatrixSimilarity
 
 from potatobot import Answer, Followup, PotatoBot
 
 JSIM_FILE = "eecs281jsim.json"
 JSIM_THRESHOLD = .25
-JSIM_LIMIT = 50
+
+d = enchant.Dict("en_US")
+CORPUS_FILE = 'eecs281corpus.mm'
+DICTIONARY_FILE = 'eecs281.dict'
+ID_MAP_FILE = '281corpus_id_map.pickle'
+GENSIM_THRESHOLD = .75
+
+SIM_LIMIT = 50
+
 
 def die(message):
     sys.stderr.write("{}\n".format(message))
@@ -143,7 +160,6 @@ def test_cant_valgrind():
     assert not cant_valgrind("my program sucks")
 
 
-
 def main():
     logging.basicConfig(level=logging.DEBUG)
     bot = get_bot()
@@ -208,24 +224,111 @@ cases!</p>
 """)
 
     @bot.handle_post
-    def check_for_duplicate_posts(post_info):
+    def check_for_duplicate_posts_jsim(post_info):
         if post_info.status != "private":
 
             jsim.save(JSIM_FILE, post_info.id, post_info.text)
 
-        sim_list = jsim.getSimilarities(JSIM_FILE, post_info.id, post_info.text, JSIM_THRESHOLD)
+        sim_list = jsim.getSimilarities(
+            JSIM_FILE, post_info.id, post_info.text, JSIM_THRESHOLD)
 
         sim_list = [i for i in sim_list if int(i[1]) < post_info.id]
-        answers = ", ".join("@" + x[1] for x in sim_list[:JSIM_LIMIT])
+        answers = ", ".join("@" + x[1] for x in sim_list[:SIM_LIMIT])
         if sim_list:
             return Followup("""
 <p>Hi! It looks like this question has been asked before or there is a related post.
 Please look at these posts: {}</p>
 <p></p>
 <p>If you found your answer in one of the above, please specify which one answered your question.</p>
+<p><sub>These posts suggested using set similarity</sub></p>
 """.format(answers))
 
+    @bot.handle_post
+    def check_for_duplicate_posts_LSI(post_info):
+        """
+        use latent semantic analysis to generate a list of posts that are
+        similar to the post provided in post_info
+
+        For more information:
+
+        http://radimrehurek.com/gensim/models/lsimodel.html
+        http://radimrehurek.com/gensim/corpora/dictionary.html
+        http://radimrehurek.com/gensim/tutorial.html
+        """
+        dictionary = Dictionary.load(DICTIONARY_FILE)
+        corpus = MmCorpus(CORPUS_FILE)
+        corpus_id_to_true_id = load(ID_MAP_FILE)
+
+        terms = get_terms(post_info.text)
+        if post_info.status != "private":
+            update_containers_with_terms(
+                terms,
+                corpus,
+                dictionary,
+                corpus_id_to_true_id,
+                post_info.id)
+            save_containers(corpus, dictionary, corpus_id_to_true_id)
+
+        lsi = LsiModel(corpus, id2word=dictionary)
+        query_vec = lsi[dictionary.doc2bow(terms)]
+        sim_index = MatrixSimilarity(lsi[corpus])
+
+        sim_list = (
+            sorted(
+                enumerate(sim_index[query_vec]),
+                key=lambda item: -item[1]))
+        sim_list = [corpus_id_to_true_id[sim[0]]
+                    for sim in sim_list if sim[1] > GENSIM_THRESHOLD]
+        answers = ", ".join("@" + x for x in sim_list[:SIM_LIMIT])
+
+        if sim_list:
+            return Followup("""
+<p>Hi! It looks like this question has been asked before or there is a related post.
+Please look at these posts: {}</p>
+<p></p>
+<p>If you found your answer in one of the above, please specify which one answered your question.</p>
+<p><sub>These posts suggested using Latent Semantic Analysis</sub></p>
+""".format(answers))
+
+    initialize_corpus_from_jsim()
     bot.run_forever()
+
+
+def initialize_corpus_from_jsim():
+    """
+    Read in the jsim file and use that to initialize therequired similarity
+    structures
+    """
+    with open(JSIM_FILE, "rb") as f:
+        posts = json.loads(f.read().decode())
+
+    corpus_id_to_true_id = []
+    dictionary = Dictionary()
+    corpus = []
+    for (postid, text) in posts.items():
+        update_containers_with_terms(
+            get_terms(text), corpus, dictionary, corpus_id_to_true_id, postid)
+
+    save_containers(corpus, dictionary, corpus_id_to_true_id)
+
+
+def update_containers_with_terms(terms, corpus, dictionary, id_map, postid):
+    corpus.append(dictionary.doc2bow(terms, allow_update=True))
+    id_map.append(postid)
+
+
+def save_containers(corpus, dictionary, id_map):
+    MmCorpus.serialize(CORPUS_FILE, corpus)
+    dictionary.save(DICTIONARY_FILE)
+    with open(ID_MAP_FILE, 'wb') as picklefile:
+        Pickler(picklefile).dump(id_map)
+
+
+def get_terms(content):
+    content = re.sub('<[^<]+?>', '', content)
+    content = re.sub('[^a-zA-Z0-9 ]', '', content)
+    return {i.lower() for i in content.split() if d.check(i)} - STOPWORDS
+
 
 if __name__ == "__main__":
     main()
