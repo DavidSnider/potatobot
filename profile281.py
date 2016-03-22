@@ -22,7 +22,7 @@ d = enchant.Dict("en_US")
 CORPUS_FILE = 'eecs281corpus.mm'
 DICTIONARY_FILE = 'eecs281.dict'
 ID_MAP_FILE = '281corpus_id_map.pickle'
-GENSIM_THRESHOLD = .75
+GENSIM_THRESHOLD = .55
 
 SIM_LIMIT = 50
 
@@ -255,9 +255,14 @@ Please look at these posts: {}</p>
         http://radimrehurek.com/gensim/corpora/dictionary.html
         http://radimrehurek.com/gensim/tutorial.html
         """
+
         dictionary = Dictionary.load(DICTIONARY_FILE)
-        corpus = MmCorpus(CORPUS_FILE)
-        corpus_id_to_true_id = load(ID_MAP_FILE)
+        corpus = [arr for arr in MmCorpus(CORPUS_FILE)]
+        with open(ID_MAP_FILE, 'rb') as id_map_file:
+            corpus_id_to_true_id = load(id_map_file)
+
+        if post_info.id in corpus_id_to_true_id[-50:]:
+            return
 
         terms = get_terms(post_info.text)
         if post_info.status != "private":
@@ -278,8 +283,9 @@ Please look at these posts: {}</p>
                 enumerate(sim_index[query_vec]),
                 key=lambda item: -item[1]))
         sim_list = [corpus_id_to_true_id[sim[0]]
-                    for sim in sim_list if sim[1] > GENSIM_THRESHOLD]
-        answers = ", ".join("@" + x for x in sim_list[:SIM_LIMIT])
+                    for sim in sim_list if sim[1] > GENSIM_THRESHOLD
+                    and corpus_id_to_true_id[sim[0]] != post_info.id]
+        answers = ", ".join("@{}".format(x) for x in sim_list[:SIM_LIMIT])
 
         if sim_list:
             return Followup("""
@@ -305,9 +311,14 @@ def initialize_corpus_from_jsim():
     corpus_id_to_true_id = []
     dictionary = Dictionary()
     corpus = []
-    for (postid, text) in posts.items():
+
+    for postid in sorted(posts, key=int):
         update_containers_with_terms(
-            get_terms(text), corpus, dictionary, corpus_id_to_true_id, postid)
+            get_terms(posts[postid]),
+            corpus,
+            dictionary,
+            corpus_id_to_true_id,
+            int(postid))
 
     save_containers(corpus, dictionary, corpus_id_to_true_id)
 
