@@ -11,7 +11,9 @@ from gensim.parsing.preprocessing import STOPWORDS
 from gensim.corpora.dictionary import Dictionary
 from gensim.corpora import MmCorpus
 from gensim.models.lsimodel import LsiModel
-from gensim.similarities import MatrixSimilarity
+from gensim.models.tfidfmodel import TfidfModel
+from gensim.similarities import MatrixSimilarity, SparseMatrixSimilarity
+from gensim.utils import simple_preprocess
 
 from potatobot import Answer, Followup, PotatoBot
 
@@ -22,7 +24,8 @@ d = enchant.Dict("en_US")
 CORPUS_FILE = 'eecs281corpus.mm'
 DICTIONARY_FILE = 'eecs281.dict'
 ID_MAP_FILE = '281corpus_id_map.pickle'
-GENSIM_THRESHOLD = .55
+LSI_THRESHOLD = .65
+TFIDF_THRESHOLD = .4
 
 SIM_LIMIT = 50
 
@@ -276,24 +279,64 @@ Please look at these posts: {}</p>
 
         lsi = LsiModel(corpus, id2word=dictionary)
         query_vec = lsi[dictionary.doc2bow(terms)]
-        sim_index = MatrixSimilarity(lsi[corpus])
+        sim_index = MatrixSimilarity(lsi[corpus], num_best=SIM_LIMIT)
 
-        sim_list = (
-            sorted(
-                enumerate(sim_index[query_vec]),
-                key=lambda item: -item[1]))
-        sim_list = [corpus_id_to_true_id[sim[0]]
-                    for sim in sim_list if sim[1] > GENSIM_THRESHOLD
-                    and corpus_id_to_true_id[sim[0]] != post_info.id]
-        answers = ", ".join("@{}".format(x) for x in sim_list[:SIM_LIMIT])
+        sim_list = (corpus_id_to_true_id[sim[0]]
+                    for sim in sim_index[query_vec]
+                    if sim[1] > LSI_THRESHOLD)
+        answers = ", ".join("@{}".format(x) for x in sim_list)
 
-        if sim_list:
+        if answers:
             return Followup("""
 <p>Hi! It looks like this question has been asked before or there is a related post.
 Please look at these posts: {}</p>
 <p></p>
 <p>If you found your answer in one of the above, please specify which one answered your question.</p>
 <p><sub>These posts suggested using Latent Semantic Analysis</sub></p>
+""".format(answers))
+
+    @bot.handle_post
+    def check_for_duplicate_posts_tfidf(post_info):
+        """
+        use fidf to generate a list of posts that are
+        similar to the post provided in post_info
+
+        For more information:
+
+        https://radimrehurek.com/gensim/models/tfidfmodel.html
+        http://radimrehurek.com/gensim/corpora/dictionary.html
+        http://radimrehurek.com/gensim/tutorial.html
+        """
+
+        with open(ID_MAP_FILE, 'rb') as id_map_file:
+            corpus_id_to_true_id = load(id_map_file)
+
+        if post_info.id in corpus_id_to_true_id[-50:]:
+            return
+
+        terms = get_terms(post_info.text)
+        corpus = MmCorpus(CORPUS_FILE)
+        dictionary = Dictionary.load(DICTIONARY_FILE)
+
+        tfidf = TfidfModel(corpus, id2word=dictionary)
+        query_vec = tfidf[dictionary.doc2bow(terms)]
+        sim_index = SparseMatrixSimilarity(
+            tfidf[corpus],
+            num_features=corpus.num_terms,
+            num_best=SIM_LIMIT)
+
+        sim_list = (corpus_id_to_true_id[sim[0]]
+                    for sim in sim_index[query_vec]
+                    if sim[1] > TFIDF_THRESHOLD)
+        answers = ", ".join("@{}".format(x) for x in sim_list)
+
+        if answers:
+            return Followup("""
+<p>Hi! It looks like this question has been asked before or there is a related post.
+Please look at these posts: {}</p>
+<p></p>
+<p>If you found your answer in one of the above, please specify which one answered your question.</p>
+<p><sub>These posts suggested using TFIDF</sub></p>
 """.format(answers))
 
     initialize_corpus_from_jsim()
@@ -336,9 +379,7 @@ def save_containers(corpus, dictionary, id_map):
 
 
 def get_terms(content):
-    content = re.sub('<[^<]+?>', '', content)
-    content = re.sub('[^a-zA-Z0-9 ]', '', content)
-    return {i.lower() for i in content.split() if d.check(i)} - STOPWORDS
+    return {i for i in simple_preprocess(content) if d.check(i)} - STOPWORDS
 
 
 if __name__ == "__main__":
