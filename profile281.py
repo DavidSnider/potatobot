@@ -264,11 +264,9 @@ Please look at these posts: {}</p>
         with open(ID_MAP_FILE, 'rb') as id_map_file:
             corpus_id_to_true_id = load(id_map_file)
 
-        if post_info.id in corpus_id_to_true_id[-50:]:
-            return
-
         terms = get_terms(post_info.text)
-        if post_info.status != "private":
+        if (post_info.status != "private" and
+                post_info.id not in corpus_id_to_true_id[-50:]):
             update_containers_with_terms(
                 terms,
                 corpus,
@@ -283,7 +281,8 @@ Please look at these posts: {}</p>
 
         sim_list = (corpus_id_to_true_id[sim[0]]
                     for sim in sim_index[query_vec]
-                    if sim[1] > LSI_THRESHOLD)
+                    if sim[1] > LSI_THRESHOLD
+                    and corpus_id_to_true_id[sim[0]] != post_info.id)
         answers = ", ".join("@{}".format(x) for x in sim_list)
 
         if answers:
@@ -310,10 +309,6 @@ Please look at these posts: {}</p>
 
         with open(ID_MAP_FILE, 'rb') as id_map_file:
             corpus_id_to_true_id = load(id_map_file)
-
-        if post_info.id in corpus_id_to_true_id[-50:]:
-            return
-
         terms = get_terms(post_info.text)
         corpus = MmCorpus(CORPUS_FILE)
         dictionary = Dictionary.load(DICTIONARY_FILE)
@@ -327,7 +322,8 @@ Please look at these posts: {}</p>
 
         sim_list = (corpus_id_to_true_id[sim[0]]
                     for sim in sim_index[query_vec]
-                    if sim[1] > TFIDF_THRESHOLD)
+                    if sim[1] > TFIDF_THRESHOLD
+                    and corpus_id_to_true_id[sim[0]] != post_info.id)
         answers = ", ".join("@{}".format(x) for x in sim_list)
 
         if answers:
