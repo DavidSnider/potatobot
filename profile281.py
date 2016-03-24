@@ -15,9 +15,14 @@ from gensim.models.tfidfmodel import TfidfModel
 from gensim.similarities import MatrixSimilarity, SparseMatrixSimilarity
 from gensim.utils import simple_preprocess
 
+from textblob import Blobber, wordnet
+from textblob_aptagger import PerceptronTagger
 from nltk.stem import WordNetLemmatizer
 
 from potatobot import Answer, Followup, PotatoBot
+
+tb = Blobber(pos_tagger=PerceptronTagger())
+lemmatizer = WordNetLemmatizer()
 
 JSIM_FILE = "eecs281jsim.json"
 JSIM_THRESHOLD = .25
@@ -380,10 +385,23 @@ def save_containers(corpus, dictionary, id_map):
 
 
 def get_terms(content):
-    lmmtzr = WordNetLemmatizer()
-    return {lmmtzr.lemmatize(i) for i in simple_preprocess(content)
-            if d.check(i)} - STOPWORDS
+    terms = {lemmatizer.lemmatize(i, get_wordnet_pos(tag)) for (i, tag)
+             in tb(" ".join(simple_preprocess(content))).tags
+             if d.check(str(i))} - STOPWORDS
+    return {term for term in terms if len(term) > 2}
 
+
+def get_wordnet_pos(tag):
+    if tag.startswith('J'):
+        return wordnet.ADJ
+    elif tag.startswith('V'):
+        return wordnet.VERB
+    elif tag.startswith('N'):
+        return wordnet.NOUN
+    elif tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return wordnet.NOUN
 
 if __name__ == "__main__":
     main()
