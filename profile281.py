@@ -15,6 +15,8 @@ from gensim.models.tfidfmodel import TfidfModel
 from gensim.similarities import MatrixSimilarity, SparseMatrixSimilarity
 from gensim.utils import simple_preprocess
 
+from nltk.stem import WordNetLemmatizer
+
 from potatobot import Answer, Followup, PotatoBot
 
 JSIM_FILE = "eecs281jsim.json"
@@ -378,7 +380,9 @@ def save_containers(corpus, dictionary, id_map):
 
 
 def get_terms(content):
-    return {i for i in simple_preprocess(content) if d.check(i)} - STOPWORDS
+    lmmtzr = WordNetLemmatizer()
+    return {lmmtzr.lemmatize(i) for i in simple_preprocess(content)
+            if d.check(i)} - STOPWORDS
 
 
 if __name__ == "__main__":
