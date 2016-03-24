@@ -27,6 +27,8 @@ ID_MAP_FILE = '281corpus_id_map.pickle'
 LSI_THRESHOLD = .65
 TFIDF_THRESHOLD = .4
 
+NUM_MIN_TERMS = 5
+
 SIM_LIMIT = 50
 
 
@@ -363,8 +365,9 @@ def initialize_corpus_from_jsim():
 
 
 def update_containers_with_terms(terms, corpus, dictionary, id_map, postid):
-    corpus.append(dictionary.doc2bow(terms, allow_update=True))
-    id_map.append(postid)
+    if len(terms) >= NUM_MIN_TERMS:
+        corpus.append(dictionary.doc2bow(terms, allow_update=True))
+        id_map.append(postid)
 
 
 def save_containers(corpus, dictionary, id_map):
