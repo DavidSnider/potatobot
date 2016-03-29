@@ -30,11 +30,11 @@ d = enchant.Dict("en_US")
 CORPUS_FILE = 'eecs281corpus.mm'
 DICTIONARY_FILE = 'eecs281.dict'
 ID_MAP_FILE = '281corpus_id_map.pickle'
-TFIDF_THRESHOLD = .4
+TFIDF_THRESHOLD = .5
 
 NUM_MIN_TERMS = 5
 
-SIM_LIMIT = 50
+SIM_LIMIT = 5
 
 
 def die(message):
