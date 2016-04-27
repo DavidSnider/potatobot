@@ -11,7 +11,8 @@ from gensim.parsing.preprocessing import STOPWORDS
 from gensim.corpora.dictionary import Dictionary
 from gensim.corpora import MmCorpus
 from gensim.models.tfidfmodel import TfidfModel
-from gensim.similarities import SparseMatrixSimilarity
+from gensim.models.ldamodel import LdaModel
+from gensim.similarities import SparseMatrixSimilarity, MatrixSimilarity
 from gensim.utils import simple_preprocess
 
 from textblob import wordnet
@@ -30,6 +31,7 @@ CORPUS_FILE = '-eecs281corpus.mm'
 DICTIONARY_FILE = '-eecs281.dict'
 ID_MAP_FILE = '-281corpus_id_map.pickle'
 TFIDF_THRESHOLD = .5
+LDA_THRESHOLD = .5
 
 NUM_MIN_TERMS = 5
 
@@ -334,6 +336,63 @@ Please look at these posts: {}</p>
 <p></p>
 <p>If you found your answer in one of the above, please specify which one answered your question.</p>
 <p><sub>These posts suggested using TFIDF</sub></p>
+""".format(answers))
+
+    @bot.handle_post
+    def check_for_duplicate_posts_lda(post_info):
+        """
+        use LDA to generate a list of posts that are
+        similar to the post provided in post_info
+
+        For more information:
+
+        https://radimrehurek.com/gensim/models/ldamodel.html
+        http://radimrehurek.com/gensim/corpora/dictionary.html
+        http://radimrehurek.com/gensim/tutorial.html
+        """
+        sim_list = set()
+        for folder in post_info.folders:
+
+            dictionary, corpus, corpus_id_to_true_id = read_containers(folder)
+            terms = get_terms(post_info.text)
+            if (post_info.status != "private" and
+                    post_info.id not in corpus_id_to_true_id[-50:]):
+                update_containers_with_terms(
+                    terms,
+                    corpus,
+                    dictionary,
+                    corpus_id_to_true_id,
+                    post_info.id)
+                save_containers(
+                    folder,
+                    corpus,
+                    dictionary,
+                    corpus_id_to_true_id)
+            if not corpus:
+                return
+            lda = LdaModel(
+                corpus,
+                id2word=dictionary,
+                alpha='auto',
+                update_every=0,
+                passes=20)
+            query_vec = lda[dictionary.doc2bow(terms)]
+            sim_index = MatrixSimilarity(
+                lda[corpus],
+                num_features=len(dictionary),
+                num_best=SIM_LIMIT)
+            sim_list |= {corpus_id_to_true_id[sim[0]]
+                         for sim in sim_index[query_vec]
+                         if sim[1] > LDA_THRESHOLD
+                         and corpus_id_to_true_id[sim[0]] != post_info.id}
+        answers = ", ".join("@{}".format(x) for x in sim_list)
+        if answers:
+            return Followup("""
+<p>Hi! It looks like this question has been asked before or there is a related post.
+Please look at these posts: {}</p>
+<p></p>
+<p>If you found your answer in one of the above, please specify which one answered your question.</p>
+<p><sub>These posts suggested using LDA</sub></p>
 """.format(answers))
 
     bot.run_forever()
