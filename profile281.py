@@ -3,9 +3,11 @@ import os
 import re
 import sys
 import json
+import html.parser
+import itertools
+from string import punctuation
 from pickle import Pickler, load
 
-import enchant
 import jsim
 from gensim.parsing.preprocessing import STOPWORDS
 from gensim.corpora.dictionary import Dictionary
@@ -14,19 +16,20 @@ from gensim.models.tfidfmodel import TfidfModel
 from gensim.similarities import SparseMatrixSimilarity
 from gensim.utils import simple_preprocess
 
-from textblob import Blobber, wordnet
-from textblob_aptagger import PerceptronTagger
+from textblob import wordnet
 from nltk.stem import WordNetLemmatizer
+from nltk import word_tokenize, pos_tag
 
 from potatobot import Answer, Followup, PotatoBot
 
-tb = Blobber(pos_tagger=PerceptronTagger())
+html_parser = html.parser.HTMLParser()
+TAG_RE = re.compile(r'<[^>]+>')
+CODE_RE = re.compile(r'<pre>.*?</pre>', re.DOTALL)
 lemmatizer = WordNetLemmatizer()
 
 JSIM_FILE = "eecs281jsim.json"
 JSIM_THRESHOLD = .25
 
-d = enchant.Dict("en_US")
 CORPUS_FILE = 'eecs281corpus.mm'
 DICTIONARY_FILE = 'eecs281.dict'
 ID_MAP_FILE = '281corpus_id_map.pickle'
@@ -35,6 +38,59 @@ TFIDF_THRESHOLD = .5
 NUM_MIN_TERMS = 5
 
 SIM_LIMIT = 5
+
+CPP_KEYWORDS = {
+    'auto',
+    'bool',
+    'break',
+    'case',
+    'catch',
+    'char',
+    'class',
+    'const',
+    'cast',
+    'continue',
+    'delete',
+    'do',
+    'double',
+    'else',
+    'enum',
+    'struct',
+    'extern',
+    'false',
+    'for',
+    'float',
+    'each',
+    'friend',
+    'goto',
+    'if',
+    'include',
+    'int',
+    'namespace',
+    'new',
+    'nullptr',
+    'operator',
+    'private',
+    'protected',
+    'public',
+    'return',
+    'short',
+    'signed',
+    'sizeof',
+    'static',
+    'switch',
+    'std'
+    'this',
+    'throw',
+    'true',
+    'try',
+    'typedef',
+    'union',
+    'unsigned',
+    'using',
+    'virtual',
+    'void',
+    'while'}
 
 
 def die(message):
@@ -343,10 +399,17 @@ def save_containers(corpus, dictionary, id_map):
 
 
 def get_terms(content):
-    terms = {lemmatizer.lemmatize(i, get_wordnet_pos(tag)) for (i, tag)
-             in tb(" ".join(simple_preprocess(content))).tags
-             if d.check(str(i))} - STOPWORDS
-    return {term for term in terms if len(term) > 2}
+    text = html_parser.unescape(content)
+
+    code = [set(simple_preprocess(x[5:-6].lower())) -
+            CPP_KEYWORDS - STOPWORDS for x in CODE_RE.findall(text)]
+    code = set(itertools.chain(*code))
+
+    text = TAG_RE.sub('', CODE_RE.sub('', text)).lower()
+    text = {lemmatizer.lemmatize(word, get_wordnet_pos(tag))
+            for (word, tag) in pos_tag(word_tokenize(text))
+            if word not in STOPWORDS and word not in punctuation}
+    return text | code
 
 
 def get_wordnet_pos(tag):
