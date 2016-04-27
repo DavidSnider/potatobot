@@ -2,13 +2,11 @@ import logging
 import os
 import re
 import sys
-import json
 import html.parser
 import itertools
 from string import punctuation
 from pickle import Pickler, load
 
-import jsim
 from gensim.parsing.preprocessing import STOPWORDS
 from gensim.corpora.dictionary import Dictionary
 from gensim.corpora import MmCorpus
@@ -27,12 +25,10 @@ TAG_RE = re.compile(r'<[^>]+>')
 CODE_RE = re.compile(r'<pre>.*?</pre>', re.DOTALL)
 lemmatizer = WordNetLemmatizer()
 
-JSIM_FILE = "eecs281jsim.json"
-JSIM_THRESHOLD = .25
-
-CORPUS_FILE = 'eecs281corpus.mm'
-DICTIONARY_FILE = 'eecs281.dict'
-ID_MAP_FILE = '281corpus_id_map.pickle'
+CONTAINER_DIR = 'containers/'
+CORPUS_FILE = '-eecs281corpus.mm'
+DICTIONARY_FILE = '-eecs281.dict'
+ID_MAP_FILE = '-281corpus_id_map.pickle'
 TFIDF_THRESHOLD = .5
 
 NUM_MIN_TERMS = 5
@@ -290,26 +286,6 @@ cases!</p>
 """)
 
     @bot.handle_post
-    def check_for_duplicate_posts_jsim(post_info):
-        if post_info.status != "private":
-
-            jsim.save(JSIM_FILE, post_info.id, post_info.text)
-
-        sim_list = jsim.getSimilarities(
-            JSIM_FILE, post_info.id, post_info.text, JSIM_THRESHOLD)
-
-        sim_list = [i for i in sim_list if int(i[1]) < post_info.id]
-        answers = ", ".join("@" + x[1] for x in sim_list[:SIM_LIMIT])
-        if sim_list:
-            return Followup("""
-<p>Hi! It looks like this question has been asked before or there is a related post.
-Please look at these posts: {}</p>
-<p></p>
-<p>If you found your answer in one of the above, please specify which one answered your question.</p>
-<p><sub>These posts suggested using set similarity</sub></p>
-""".format(answers))
-
-    @bot.handle_post
     def check_for_duplicate_posts_tfidf(post_info):
         """
         use tfidf to generate a list of posts that are
@@ -321,34 +297,35 @@ Please look at these posts: {}</p>
         http://radimrehurek.com/gensim/corpora/dictionary.html
         http://radimrehurek.com/gensim/tutorial.html
         """
+        sim_list = set()
+        for folder in post_info.folders:
+            dictionary, corpus, corpus_id_to_true_id = read_containers(folder)
+            terms = get_terms(post_info.text)
+            if (post_info.status != "private" and
+                    post_info.id not in corpus_id_to_true_id[-50:]):
+                update_containers_with_terms(
+                    terms,
+                    corpus,
+                    dictionary,
+                    corpus_id_to_true_id,
+                    post_info.id)
+                save_containers(
+                    folder,
+                    corpus,
+                    dictionary,
+                    corpus_id_to_true_id)
 
-        dictionary = Dictionary.load(DICTIONARY_FILE)
-        corpus = [arr for arr in MmCorpus(CORPUS_FILE)]
-        with open(ID_MAP_FILE, 'rb') as id_map_file:
-            corpus_id_to_true_id = load(id_map_file)
+            tfidf = TfidfModel(corpus, id2word=dictionary)
+            query_vec = tfidf[dictionary.doc2bow(terms)]
+            sim_index = SparseMatrixSimilarity(
+                tfidf[corpus],
+                num_features=len(dictionary),
+                num_best=SIM_LIMIT)
 
-        terms = get_terms(post_info.text)
-        if (post_info.status != "private" and
-                post_info.id not in corpus_id_to_true_id[-50:]):
-            update_containers_with_terms(
-                terms,
-                corpus,
-                dictionary,
-                corpus_id_to_true_id,
-                post_info.id)
-            save_containers(corpus, dictionary, corpus_id_to_true_id)
-
-        tfidf = TfidfModel(corpus, id2word=dictionary)
-        query_vec = tfidf[dictionary.doc2bow(terms)]
-        sim_index = SparseMatrixSimilarity(
-            tfidf[corpus],
-            num_features=len(dictionary),
-            num_best=SIM_LIMIT)
-
-        sim_list = (corpus_id_to_true_id[sim[0]]
-                    for sim in sim_index[query_vec]
-                    if sim[1] > TFIDF_THRESHOLD
-                    and corpus_id_to_true_id[sim[0]] != post_info.id)
+            sim_list |= {corpus_id_to_true_id[sim[0]]
+                         for sim in sim_index[query_vec]
+                         if sim[1] > TFIDF_THRESHOLD
+                         and corpus_id_to_true_id[sim[0]] != post_info.id}
         answers = ", ".join("@{}".format(x) for x in sim_list)
         if answers:
             return Followup("""
@@ -359,30 +336,18 @@ Please look at these posts: {}</p>
 <p><sub>These posts suggested using TFIDF</sub></p>
 """.format(answers))
 
-    initialize_corpus_from_jsim()
     bot.run_forever()
 
 
-def initialize_corpus_from_jsim():
-    """
-    Read in the jsim file and use that to initialize therequired similarity
-    structures
-    """
-    with open(JSIM_FILE, "rb") as f:
-        posts = json.loads(f.read().decode())
-    corpus_id_to_true_id = []
-    dictionary = Dictionary()
-    corpus = []
-
-    for postid in sorted(posts, key=int):
-        update_containers_with_terms(
-            get_terms(posts[postid]),
-            corpus,
-            dictionary,
-            corpus_id_to_true_id,
-            int(postid))
-
-    save_containers(corpus, dictionary, corpus_id_to_true_id)
+def read_containers(folder):
+    try:
+        dictionary = Dictionary.load(CONTAINER_DIR + folder + DICTIONARY_FILE)
+        corpus = list(MmCorpus(CONTAINER_DIR + folder + CORPUS_FILE))
+        with open(CONTAINER_DIR + folder + ID_MAP_FILE, 'rb') as id_map_file:
+            corpus_id_to_true_id = load(id_map_file)
+        return dictionary, corpus, corpus_id_to_true_id
+    except:
+        return Dictionary(), [], []
 
 
 def update_containers_with_terms(terms, corpus, dictionary, id_map, postid):
@@ -391,10 +356,10 @@ def update_containers_with_terms(terms, corpus, dictionary, id_map, postid):
         id_map.append(postid)
 
 
-def save_containers(corpus, dictionary, id_map):
-    MmCorpus.serialize(CORPUS_FILE, corpus)
-    dictionary.save(DICTIONARY_FILE)
-    with open(ID_MAP_FILE, 'wb') as picklefile:
+def save_containers(folder, corpus, dictionary, id_map):
+    MmCorpus.serialize(CONTAINER_DIR + folder + CORPUS_FILE, corpus)
+    dictionary.save(CONTAINER_DIR + folder + DICTIONARY_FILE)
+    with open(CONTAINER_DIR + folder + ID_MAP_FILE, 'wb') as picklefile:
         Pickler(picklefile).dump(id_map)
 
 
