@@ -7,7 +7,8 @@ import piazza_api
 
 from .responses import Answer, Followup
 
-PostInfo = collections.namedtuple("PostInfo", ["username", "text", "id", "status"])
+PostInfo = collections.namedtuple(
+    "PostInfo", ["username", "text", "id", "status", "folders"])
 
 class ignore_error:
     def __init__(self, *error_types):
@@ -141,6 +142,7 @@ class PotatoBot:
         post_history = post["history"][0]
         post_text = post_history["content"]
         post_status = post["status"]
+        post_folders = post['folders']
 
         post_username_id = post_history["uid"]
         post_username = self._network.get_users([post_username_id])
@@ -149,7 +151,8 @@ class PotatoBot:
         return PostInfo(username=post_username,
                         text=post_text,
                         id=post["nr"],
-                        status=post_status)
+                        status=post_status,
+                        folders=post_folders)
 
     @ignore_error(KeyError)
     def _should_ignore_post(self, post):
