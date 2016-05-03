@@ -368,10 +368,12 @@ Please look at these posts: {}</p>
                     corpus,
                     dictionary,
                     corpus_id_to_true_id)
-            if not corpus:
+            # if we haven't seen enough docs to train the model
+            if len(corpus) < 100:
                 return
             lda = LdaModel(
                 corpus,
+                num_topics=10,
                 id2word=dictionary,
                 alpha='auto',
                 update_every=0,
