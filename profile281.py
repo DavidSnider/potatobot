@@ -370,7 +370,7 @@ Please look at these posts: {}</p>
                     corpus_id_to_true_id)
             # if we haven't seen enough docs to train the model
             if len(corpus) < 100:
-                return
+                continue
             lda = LdaModel(
                 corpus,
                 num_topics=10,
