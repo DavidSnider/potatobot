@@ -30,8 +30,8 @@ CONTAINER_DIR = 'containers/'
 CORPUS_FILE = '-eecs281corpus.mm'
 DICTIONARY_FILE = '-eecs281.dict'
 ID_MAP_FILE = '-281corpus_id_map.pickle'
-TFIDF_THRESHOLD = .5
-LDA_THRESHOLD = .5
+TFIDF_THRESHOLD = .375
+LDA_THRESHOLD = .45
 
 NUM_MIN_TERMS = 5
 
