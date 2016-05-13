@@ -468,7 +468,7 @@ Please look at these posts: {}</p>
 <p><sub>These posts suggested using TFIDF</sub></p>
 """.format(answers))
 
-    @bot.handle_post
+    #@bot.handle_post
     def check_for_duplicate_posts_lda(post_info):
         """
         use LDA to generate a list of posts that are
