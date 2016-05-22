@@ -586,13 +586,19 @@ def get_terms(content):
             CPP_KEYWORDS - STOPWORDS for x in CODE_RE.findall(text)]
     code = set(itertools.chain(*code))
 
+    # remove tags, code, and expand contractions
     text = expand_contractions(TAG_RE.sub('', CODE_RE.sub('', text)).lower())
-    text = {lemmatizer.lemmatize(word, get_wordnet_pos(tag))
-            for (word, tag) in pos_tag(word_tokenize(text))
-            if word not in STOPWORDS and word not in punctuation}
-    # make this not suck, but howto
-    text = {item.strip(punctuation)
-            for item in text if len(item.strip(punctuation)) > 1}
+    # lemmatize all words
+    text = (lemmatizer.lemmatize(word, get_wordnet_pos(tag))
+            for (word, tag) in pos_tag(word_tokenize(text)))
+    # strip punctuation from beginning and end of word
+    text = (item.strip(punctuation) for item in text)
+    # don't consider based on certain factors
+    text = {item for item in text
+            if item not in STOPWORDS
+            and item not in punctuation
+            and len(item) > 1}
+
     return text | code
 
 
