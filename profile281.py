@@ -34,6 +34,28 @@ TFIDF_THRESHOLD = .4
 NUM_MIN_TERMS = 5
 SIM_LIMIT = 5
 
+UNSTOPWORDS = {
+    'across',
+    'amount',
+    'back',
+    'front',
+    'due',
+    'empty',
+    'find',
+    'full'}
+
+MORE_STOPWORDS = {
+    'confuse',
+    'like',
+    'read',
+    'say',
+    'thank',
+    'thanks',
+    'try',
+    'you'}
+
+STOPWORDS = (STOPWORDS - UNSTOPWORDS) | MORE_STOPWORDS
+
 CPP_KEYWORDS = {
     'auto',
     'bool',
