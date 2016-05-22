@@ -503,8 +503,9 @@ def get_terms(content):
     text = {lemmatizer.lemmatize(word, get_wordnet_pos(tag))
             for (word, tag) in pos_tag(word_tokenize(text))
             if word not in STOPWORDS and word not in punctuation}
+    # make this not suck, but howto
     text = {item.strip(punctuation)
-            for item in text if item.strip(punctuation)}
+            for item in text if len(item.strip(punctuation)) > 1}
     return text | code
 
 
