@@ -69,12 +69,14 @@ MORE_STOPWORDS = {
     'et',
     'exactly',
     'example',
+    'fix',
     'following',
     'hello',
     'help',
     'hi',
     'hint',
     'instead',
+    'issue',
     'know',
     'known',
     'later',
@@ -514,9 +516,9 @@ cases!</p>
         http://radimrehurek.com/gensim/tutorial.html
         """
         sim_list = set()
+        terms = get_terms(post_info.text)
         for folder in post_info.folders:
             dictionary, corpus, corpus_id_to_true_id = read_containers(folder)
-            terms = get_terms(post_info.text)
             if (post_info.status != "private" and
                     post_info.id not in corpus_id_to_true_id[-50:]):
                 update_containers_with_terms(
@@ -530,6 +532,9 @@ cases!</p>
                     corpus,
                     dictionary,
                     corpus_id_to_true_id)
+            elif post_info.status == "private":
+                # ensure all terms found in this post are known
+                dictionary.doc2bow(terms, allow_update=True)
 
             tfidf = TfidfModel(corpus, id2word=dictionary)
             query_vec = tfidf[dictionary.doc2bow(terms)]
@@ -580,7 +585,8 @@ def save_containers(folder, corpus, dictionary, id_map):
 
 
 def get_terms(content):
-    text = html_parser.unescape(content)
+
+    text = html_parser.unescape(content).replace('<br />', ' ')
 
     code = [set(simple_preprocess(x[5:-6].lower())) -
             CPP_KEYWORDS - STOPWORDS for x in CODE_RE.findall(text)]
