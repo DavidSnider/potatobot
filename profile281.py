@@ -454,7 +454,7 @@ cases!</p>
             sim_list |= {corpus_id_to_true_id[sim[0]]
                          for sim in sim_index[query_vec]
                          if sim[1] > TFIDF_THRESHOLD
-                         and corpus_id_to_true_id[sim[0]] != post_info.id}
+                         and corpus_id_to_true_id[sim[0]] < post_info.id}
         answers = ", ".join("@{}".format(x) for x in sim_list)
         if answers:
             return Followup("""
