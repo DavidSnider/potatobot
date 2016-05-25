@@ -140,7 +140,8 @@ class PotatoBot:
 
         """
         post_history = post["history"][0]
-        post_text = post_history["content"]
+        post_text = "<p>%s.</p>\n%s" % (
+            post_history["subject"], post_history["content"])
         post_status = post["status"]
         post_folders = post['folders']
 
