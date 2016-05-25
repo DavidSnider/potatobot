@@ -69,6 +69,7 @@ MORE_STOPWORDS = {
     'dndebug',
     'entirely',
     'et',
+    'exam',
     'exactly',
     'example',
     'failed',
@@ -78,6 +79,7 @@ MORE_STOPWORDS = {
     'help',
     'hi',
     'hint',
+    'hw',
     'instead',
     'issue',
     'kb',
@@ -90,6 +92,7 @@ MORE_STOPWORDS = {
     'look',
     'maybe',
     'mean',
+    'midterm',
     'necessary',
     'need',
     'new',
@@ -102,6 +105,7 @@ MORE_STOPWORDS = {
     'possible',
     'presumably',
     'probably',
+    'question',
     'read',
     'respectively',
     'right',
@@ -594,7 +598,7 @@ def save_containers(folder, corpus, dictionary, id_map):
 
 def get_terms(content):
 
-    text = html_parser.unescape(content).replace('<br />', ' ')
+    text = html_parser.unescape(content).replace('<br />', '\n')
 
     code = [set(simple_preprocess(x[5:-6].lower())) -
             CPP_KEYWORDS - STOPWORDS for x in CODE_RE.findall(text)]
